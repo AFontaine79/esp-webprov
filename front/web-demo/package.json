@@ -11,7 +11,7 @@
   "scripts": {
     "preinstall": "npm install -g browserify && npm install -g uglify-es",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "./build_webpages.sh"
+    "build": "build_webpages.sh"
   },
   "author": "Aaron Fontaine <AFontaine79@yahoo.com>",
   "license": "Apache-2.0"
