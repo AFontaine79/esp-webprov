@@ -1,0 +1,91 @@
+<!--
+  Copyright 2021 Aaron Fontaine
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" name="viewport" content="width=device-width,initial-scale=1">
+    <title>Wi-Fi Selection</title>
+    <link rel="stylesheet" href="prov/spectre.min.css">
+    <style type="text/css">
+      input[type="button"] {
+        width: 15em
+      }
+      .table.table-noline {
+        width: auto
+      }
+      .table.table-noline td,
+      .table.table-noline th {
+        border-bottom: 0px;
+        padding: .4rem .4rem;
+      }
+      .table.table-noline th {
+        border-bottom-width: 0px
+      }
+    </style>
+    <script src="prov/prov_bundle.js"></script>
+</head>
+  <body>
+    <noscript>
+      <strong>JavaScript is required. Please enable it to continue.</strong>
+    </noscript>
+    <div id="scanning-div">
+      <table class="table table-striped" id="ssid-table">
+        <thead>
+          <th>SSID</th>
+          <th>Signal Strength</th>
+          <th>Security</th>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="scan-ind" class="loading loading-lg"></div>
+      <div id="page-select" style="padding:.8rem .4rem .0rem">
+        <button id="page-prev" class="btn btn-primary" type="button">&lt;</button>
+        <button id="page-next" class="btn btn-primary" type="button">&gt;</button>
+        <button id="rescan" class="btn btn-primary" type="button">Rescan</button>
+      </div>
+      <div style="margin:16px 0 8px 0;border-bottom:solid 1px #263238;"></div>
+      <div id="ssid-form">
+      <table class="table table-noline">
+        <tr>
+          <td><label>SSID</label></td>
+          <td><input id="ssid" type="text" name="SSID" placeholder="SSID"></tr></td>
+        </tr>
+        <tr>
+          <td><label>Passphrase</label></td>
+          <td><input id="passphrase" type="password" name="Passphrase" placeholder="Passphrase"></tr></td>
+        </tr>
+      </table>
+      <div style="padding:.4rem">
+        <input class="btn btn-lg btn-primary" id="apply" type="button" value="Apply">
+      </div>
+      </div>
+    </div>
+    <div id="connecting-div" class="container">
+      <div class="columns">
+        <div class="column col-auto"><strong id="connect-msg"></strong></div>
+        <div class="column col-1 loading" id="connect-ldr"></div>
+        <div class="column col-auto"><strong id="result-msg"></strong></div>
+      </div>
+      <div id=redirect-div>
+        <label>Redirecting to:</label>
+        <a id=redirect-a></a>
+      </div>
+      <div style="padding:.4rem">
+        <button id="go-back" class="btn btn-primary" type="button">Go Back</button>
+      </div>
+    </div>
+  </body>
+</html>
