@@ -5,12 +5,11 @@
   "browser": "./src/prov/prov.js",
   "dependencies": {
     "pbf": "^3.2.1",
-    "spectre.css": "^0.5.9",
-    "uglify-es": "^3.3.9",
-    "browserify": "^17.0.0"
+    "spectre.css": "^0.5.9"
   },
   "devDependencies": {},
   "scripts": {
+    "preinstall": "npm install -g browserify && npm install -g uglify-es",
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "./build_webpages.sh"
   },

@@ -59,7 +59,9 @@ For whatever reason, passing the host path directly to the `esp_vfs_semihost_reg
 To get semihosting to work, you will need to either modify the call to `esp_vfs_semihost_register()` by changing the NULL parameter to `CONFIG_EXAMPLE_HOST_PATH_TO_MOUNT` or by adding a similar OpenOCD command line option to your debug configuration.
 
 ### Build the Webpages
-For the webpage build script to work, you must have the Node.js package manager (npm) installed on your system. The build script requires the following packages. Navigate to `front/web-demo` and run `npm install` or, alternatively, manually install the packages listed below.
+For the webpage build script to work, you must have the Node.js package manager (npm) installed on your system.
+
+The build script requires the following packages. Navigate to `front/web-demo` and run `npm run install` followed by `npm install`. Alternatively, you can manually install the packages listed below.
 - [pbf](https://www.npmjs.com/package/pbf) for compiling Espressif's .proto definition files into JavaScript. Must be installed locally so that it is visible to `browserify`.
 - [spectre.css](https://www.npmjs.com/package/spectre.css) for layout style. Must be installed locally so that it is visible to the webpage build script.
 - [browserify](https://www.npmjs.com/package/browserify) for bundling together the JavaScript output of `pbf` and handling the `require()` statements in `prov.js`. Can be installed globally.
