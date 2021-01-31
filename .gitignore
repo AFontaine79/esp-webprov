@@ -2,6 +2,7 @@
 # First section based on
 # https://github.com/huybk213/esp-idf/blob/master/.gitignore
 
+sdkconfig
 .config
 *.o
 *.pyc
