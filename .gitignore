@@ -5,6 +5,8 @@
 .config
 *.o
 *.pyc
+sdkconfig
+sdkconfig.old
 
 # gtags
 GTAGS
