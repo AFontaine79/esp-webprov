@@ -61,11 +61,11 @@ To get semihosting to work, you will need to either modify the call to `esp_vfs_
 ### Build the Webpages
 For the webpage build script to work, you must have the Node.js package manager (npm) installed on your system.
 
-The build script requires the following packages. Navigate to `front/web-demo` and run `npm run install` followed by `npm install`. Alternatively, you can manually install the packages listed below.
+The build script requires the following packages. Navigate to `front/web-demo` and run `npm install`. This will run a preinstall script to make sure you have browserify and uglify-es installed globally for npm. Then it will install pbf and spectre.css locall for the project. Alternatively, you can manually install the packages.
 - [pbf](https://www.npmjs.com/package/pbf) for compiling Espressif's .proto definition files into JavaScript. Must be installed locally so that it is visible to `browserify`.
 - [spectre.css](https://www.npmjs.com/package/spectre.css) for layout style. Must be installed locally so that it is visible to the webpage build script.
-- [browserify](https://www.npmjs.com/package/browserify) for bundling together the JavaScript output of `pbf` and handling the `require()` statements in `prov.js`. Can be installed globally.
-- [uglify-es](https://www.npmjs.com/package/uglify-es) for minification of the JavaScript. Note: It must be `uglify-es` since `uglify-js` does not properly handle `ES6+`. Can be installed globally.
+- [browserify](https://www.npmjs.com/package/browserify) for bundling together the JavaScript output of `pbf` and handling the `require()` statements in `prov.js`. Can be installed globally or locally.
+- [uglify-es](https://www.npmjs.com/package/uglify-es) for minification of the JavaScript. Note: It must be `uglify-es` since `uglify-js` does not properly handle `ES6+`. Can be installed globally or locally.
 
 To execute the build script, navigate to `front/web-demo` and execute `./build_webpages.sh` or alternatively `npm run build`. On Windows, Git Bash can be used to execute the script. When deploying to SD card or SPI flash, this step should be done before building the C code since the cmake configuration converts the contents of `front/web-demo/dist` into a binary partition image as part of the build process.
 
