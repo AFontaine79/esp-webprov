@@ -12,17 +12,15 @@ const webApiUri = "/web-api"
 var updateTimer;
 
 window.onload = function() {
-    // TODO: Don't use setInterval. Wait for previous command to succeed or fail
-    // before issuing the next one.
     updateTimer = setInterval(updatePage, 300);
     document.getElementById("clear-wifi").addEventListener("click", clearWifiSettings);
 };
 
 function updatePage() {
-    // TODO: Use synchronization constructs so that these XHR requests don't
-    // keep executing in the background if one of them is timing out.
+    // Update operations are now handled sequentially, not simultaneously.
+    // The timeout for the next updatePage() is not started until the
+    // current command sequence completes.
     updateUptime();
-    updateButtonState();
 }
 
 function updateUptime() {
@@ -37,12 +35,14 @@ function handleGetSystemUptimeResponse() {
         if (resp.status === "ok") {
             var uptime_div = document.getElementById("dev-uptime");
             uptime_div.innerHTML = resp.uptime;
+            updateButtonState();
         } else {
             console.log("Failed to get system uptime: " + resp.status);
+            handleFailure();
         }
     } else {
-        // TODO: Indicate failure
-        console.log("Failed to get system uptime.");
+        console.log("Failed to get system uptime." + this.status);
+        handleFailure();
     }
 };
 
@@ -58,44 +58,49 @@ function handleGetButtonStateResponse() {
         if (resp.status === "ok") {
             var uptime_div = document.getElementById("button-state");
             uptime_div.innerHTML = resp.button;
+            setTimeout(updatePage, 300);
         } else {
             console.log("Failed to get button state: " + resp.status);
+            handleFailure();
         }
     } else {
-        // TODO: Indicate failure
-        console.log("Failed to get button state.");
+        console.log("Failed to get button state." + this.status);
+        handleFailure();
     }
 };
 
 function clearWifiSettings() {
     cmd = { command: "clear wifi settings" };
     buffer = JSON.stringify(cmd);
-    sendWebAPIRequest(buffer, handleClearWifiSettingsResponse);
+    sendWebAPIRequest(buffer, handleClearWifiSettingsResponse, handleClearWifiSettingsTimeout, 8000);
 }
 
 function handleClearWifiSettingsResponse() {
     if (this.status == 200) {
         var resp = JSON.parse(this.responseText);
-            if (resp.status === "ok") {
-                clearInterval(updateTimer);
-                alert("Command successful. Connection to the device will be lost.");
-            } else {
-                console.log("Failed to clear wifi settings: " + resp.status);
-            }
+        if (resp.status === "ok") {
+            clearInterval(updateTimer);
+            alert("Command successful. Connection to the device will be lost.");
         } else {
-            // TODO: Indicate failure
-            console.log("Failed to clear wifi settings.");
+            alert("Failed to clear wifi settings: " + resp.status);
         }
+    } else {
+        alert("Failed to clear wifi settings." + this.status);
     }
+}
 
-function sendWebAPIRequest(buffer, onLoadCallback, timeout=2000) {
+function handleClearWifiSettingsTimeout() {
+    alert("Failed to clear wifi settings: command timed out");
+}
+
+function sendWebAPIRequest(buffer, onLoadCallback, timeoutFunc=onWebAPIRequestTimeout, timeout=5000) {
     try {
         var xhr = new XMLHttpRequest();
         xhr.open("POST", webApiUri);
         xhr.setRequestHeader('Content-Type', 'text/plain');
         xhr.setRequestHeader('Accept', 'text/plain');
         xhr.timeout = timeout;
-        xhr.ontimeout = onWebAPIRequestTimeout;
+        xhr.ontimeout = timeoutFunc;
         xhr.onload = onLoadCallback;
         xhr.send(buffer);
     } catch (e1) {
@@ -104,7 +109,11 @@ function sendWebAPIRequest(buffer, onLoadCallback, timeout=2000) {
 }
 
 function onWebAPIRequestTimeout() {
-    // TODO: Fail silently and keep trying.
-    clearInterval(updateTimer);
-    alert("Unexpected error: Failed to communicate with web api.");
+    console.log("HTTP request timeout.");
+    handleFailure();
+}
+
+function handleFailure() {
+    // Fail silently and keep trying.
+    setTimeout(updatePage, 1000);
 }
