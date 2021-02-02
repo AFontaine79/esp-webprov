@@ -97,6 +97,9 @@ It is possible for more than one autorise to occur, causing two or more browser 
 
 When two autorises occur, it is not clear which browser window should take precedence. A proposed solution here would be to request scan results on page load and only initiate a scan if there are no results yet. This would lead to both windows showing the same scan results. The user would only interact with one of them.
 
+### Note 5: Captive Portal may not Launch When Using Multiple Interfaces
+Testing with Windows 10 shows that the captive portal does not automatically open if a second network interface with internet connectivity is active. In this test environment, I was using the Wi-Fi interface to connect to the device provisioning network while the Ethernet interface remained connected to internet. In this scenario, the captive portal refused to launch even though Windows was getting the 302 redirect to GET requests for http://www.msftconnecttest.com/connecttest.txt. After unplugging the Ethernet, the test worked fine.
+
 ## References
 - [mDNS does not work on Android](https://android.stackexchange.com/questions/49188/how-to-get-mdns-working-for-chrome-on-android)
 - [Captive Portal documentation by the Wireless Broadband Alliance](https://captivebehavior.wballiance.com/)

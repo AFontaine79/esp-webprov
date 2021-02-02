@@ -13,6 +13,8 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/event_groups.h>
 #include <freertos/task.h>
+#include <esp_timer.h>
+#include <driver/gpio.h>
 
 #include <cJSON.h>
 
@@ -39,6 +41,8 @@
 
 #define MDNS_INSTANCE "provisioning webpage server"
 
+#define BUTTON_GPIO		GPIO_NUM_0
+
 static const char* TAG = "app";
 
 static esp_netif_t* _station_if_handle;
@@ -47,6 +51,8 @@ static esp_netif_t* _softap_if_handle;
 /* Signal Wi-Fi events on this event-group */
 const int WIFI_CONNECTED_EVENT = BIT0;
 static EventGroupHandle_t _wifi_event_group;
+
+static esp_timer_handle_t _wifi_reset_timer = NULL;
 
 /* Event handler for catching system events */
 static void event_handler(void* arg, esp_event_base_t event_base, int event_id, void* event_data)
@@ -62,6 +68,125 @@ static void event_handler(void* arg, esp_event_base_t event_base, int event_id, 
         ESP_LOGI(TAG, "Disconnected. Connecting to the AP again...");
         esp_wifi_connect();
     }
+}
+
+static esp_err_t rest_web_api_handler(httpd_req_t* req)
+{
+    char content[64];
+
+    /* Truncate if content length larger than the buffer */
+    size_t recv_size = MIN(req->content_len, sizeof(content));
+
+    int ret = httpd_req_recv(req, content, recv_size);
+    if (ret <= 0) {  /* 0 return value indicates connection closed */
+        /* Check if timeout occurred */
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            /* In case of timeout one can choose to retry calling
+             * httpd_req_recv(), but to keep it simple, here we
+             * respond with an HTTP 408 (Request Timeout) error */
+            httpd_resp_send_408(req);
+        }
+        /* In case of error, returning ESP_FAIL will
+         * ensure that the underlying socket is closed */
+        return ESP_FAIL;
+    }
+
+    cJSON* req_root = NULL;
+    cJSON* resp_root = cJSON_CreateObject();
+    char* status_str = "bad json";
+
+    if (recv_size > 0) {
+        ESP_LOGD(TAG, "Received data: %.*s", recv_size, content);
+    } else {
+        goto custom_prov_exit;
+    }
+
+    req_root = cJSON_Parse((const char*)content);
+    if (!req_root) {
+        goto custom_prov_exit;
+    }
+
+    cJSON* command = cJSON_GetObjectItem(req_root, "command");
+    if (!command) {
+        goto custom_prov_exit;
+    }
+
+    char* cmd_str = cJSON_GetStringValue(command);
+    if (!cmd_str) {
+        goto custom_prov_exit;
+    }
+
+    if (strcmp(cmd_str, "get system uptime") == 0) {
+    	int32_t sys_uptime_s = (int32_t)(esp_timer_get_time() / (1000U * 1000U));
+    	char sys_uptime_str[16];
+        sprintf(sys_uptime_str, "%d s", sys_uptime_s);
+        cJSON* sys_uptime_json_str_obj = cJSON_CreateString(sys_uptime_str);
+        cJSON_AddItemToObject(resp_root, "uptime", sys_uptime_json_str_obj);
+        status_str = "ok";
+    } else if (strcmp(cmd_str, "get button state") == 0) {
+    	int button_level = gpio_get_level(BUTTON_GPIO);
+    	char *button_state_str;
+    	if (button_level) {
+    		button_state_str = "up";
+    	} else {
+    		button_state_str = "down";
+    	}
+        cJSON* button_state_json_str_obj = cJSON_CreateString(button_state_str);
+        cJSON_AddItemToObject(resp_root, "button", button_state_json_str_obj);
+        status_str = "ok";
+    } else if (strcmp(cmd_str, "clear wifi settings") == 0) {
+    	/* Halt Wi-Fi, clear settings, and reset device three seconds from now. */
+        if (esp_timer_start_once(_wifi_reset_timer, 3000 * 1000U) == ESP_OK) {
+            status_str = "ok";
+        } else {
+            status_str = "command failed";
+        }
+    } else if (strcmp(cmd_str, "reset") == 0) {
+		status_str = "command failed";
+    } else {
+        status_str = "bad command";
+    }
+
+custom_prov_exit:;
+    char *resp_str;
+    size_t resp_len;
+
+    cJSON* resp_item = cJSON_CreateString(status_str);
+    cJSON_AddItemToObject(resp_root, "status", resp_item);
+
+    resp_str = (char*)cJSON_PrintUnformatted(resp_root);
+    resp_len = strlen((const char*)resp_str);
+
+    if (req_root)
+        cJSON_Delete(req_root);
+    cJSON_Delete(resp_root);
+
+    /* Uncomment the following line if testing webpages from localhost on
+     * your development machine. E.g. you are hosting the /dist folder
+     * locally at localhost:5000 and still expect cross-domain web-api
+     * requests to the device to work.
+     */
+//    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+
+    httpd_resp_send(req, resp_str, resp_len);
+
+    free(resp_str);
+
+    return ESP_OK;
+}
+
+static void clear_wifi_settings_and_restart(void* arg)
+{
+	/* Stop Wi-Fi operations before clearing settings */
+	esp_wifi_stop();
+
+    wifi_config_t wifi_cfg_empty;
+    memset(&wifi_cfg_empty, 0, sizeof(wifi_config_t));
+
+    esp_wifi_set_storage(WIFI_STORAGE_FLASH);
+    esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_cfg_empty);
+
+    esp_restart();
 }
 
 static void get_device_service_name(char* service_name, size_t max)
@@ -196,6 +321,18 @@ esp_err_t init_fs(void)
 }
 #endif
 
+void button_init(void)
+{
+    gpio_config_t gpioConfig = {
+        .pin_bit_mask = (1ULL << BUTTON_GPIO),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&gpioConfig);
+}
+
 void app_main(void)
 {
     /* Initialize NVS partition */
@@ -211,6 +348,19 @@ void app_main(void)
 
     /* Initialize TCP/IP */
     ESP_ERROR_CHECK(esp_netif_init());
+
+    /* Initialize button input GPIO */
+    button_init();
+
+    /* This timer exists to provide a slight delay after accepting
+     * the Clear Wi-Fi Settings command.
+     */
+    esp_timer_create_args_t wifi_reset_timer_confg = {
+        .callback = clear_wifi_settings_and_restart,
+        .arg = NULL,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "wifi_reset_tm"};
+    ESP_ERROR_CHECK(esp_timer_create(&wifi_reset_timer_confg, &_wifi_reset_timer));
 
     /* Initialize the default event loop */
     ESP_ERROR_CHECK(esp_event_loop_create_default());
@@ -250,6 +400,13 @@ void app_main(void)
 
     /* Start the web server, telling it where the web files are mounted. */
     ESP_ERROR_CHECK(rest_server_start(CONFIG_EXAMPLE_WEB_MOUNT_POINT));
+
+    /* URI for handling commands from web pages */
+    httpd_uri_t web_api_uri = {.uri = "/web-api",
+                               .method = HTTP_POST,
+                               .handler = rest_web_api_handler,
+                               .user_ctx = NULL};
+    httpd_register_uri_handler(*(rest_server_get_httpd_handle()), &web_api_uri);
 
     /* Let's find out if the device is provisioned */
     bool provisioned = false;
