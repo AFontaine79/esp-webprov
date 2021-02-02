@@ -168,7 +168,7 @@ custom_prov_exit:;
      */
 //    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
 
-    ESP_ERROR_CHECK(httpd_resp_send(req, resp_str, resp_len));
+    httpd_resp_send(req, resp_str, resp_len);
 
     free(resp_str);
 
