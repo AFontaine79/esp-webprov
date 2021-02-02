@@ -12,7 +12,7 @@ const webApiUri = "/web-api"
 var updateTimer;
 
 window.onload = function() {
-    updateTimer = setInterval(updatePage, 300);
+    updatePage();
     document.getElementById("clear-wifi").addEventListener("click", clearWifiSettings);
 };
 
