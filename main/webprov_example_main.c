@@ -161,7 +161,12 @@ custom_prov_exit:;
         cJSON_Delete(req_root);
     cJSON_Delete(resp_root);
 
-    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    /* Uncomment the following line if testing webpages from localhost on
+     * your development machine. E.g. you are hosting the /dist folder
+     * locally at localhost:5000 and still expect cross-domain web-api
+     * requests to the device to work.
+     */
+//    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
 
     ESP_ERROR_CHECK(httpd_resp_send(req, resp_str, resp_len));
 
