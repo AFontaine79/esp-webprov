@@ -3,8 +3,25 @@
   <head>
     <meta charset="UTF-8" name="viewport" content="width=device-width,initial-scale=1">
     <title>Awesome Device</title>
-</head>
+    <link rel="stylesheet" href="prov/spectre.min.css">
+    <script src="demo.js"></script>
+  </head>
   <body>
     <h1>Welcome to Awesome Device</h1>
-  </body>
+    <div class="container">
+      <div class="columns">
+        <div class="column col-auto">Device uptime:</div>
+        <div class="column col-auto" id="dev-uptime"></div>
+      </div>
+    </div>
+    <div class="container">
+      <div class="columns">
+        <div class="column col-auto">Button state:</div>
+        <div class="column col-auto" id="button-state"></div>
+      </div>
+    </div>
+    <div style="padding:.4rem">
+      <button id="clear-wifi" class="btn btn-primary" type="button">Clear Settings and Reset</button>
+    </div>
+</body>
 </html>

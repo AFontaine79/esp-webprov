@@ -32,8 +32,7 @@ browserify prov.js -o prov_bundle_tmp.js
 # CSS framework is already minified. Copy as is.
 cp ../node_modules/spectre.css/dist/spectre.min.css ../dist/prov/spectre.min.css
 
-# Copy example device hompage and web icon to build output.
-cp ../src/index.html ../dist/index.html
+# Copy favicon directly to output directory.
 cp ../src/favicon.ico ../dist/favicon.ico
 
 
@@ -46,18 +45,27 @@ if [ "$IS_ZIPPED" = "y" ]; then
   # Copy index.html for provisioning page, but change "prov_bundle.js" to "prov_bundle.min.js"
   sed s/prov_bundle\.js/prov_bundle\.min\.js/g ../src/prov/index.html > ../dist/prov/index.html
 
-  # Minify JavaScript and HTML while copying to build directory
+  # Minify provisioning JavaScript while copying to build directory
   uglifyjs prov_bundle_tmp.js > ../dist/prov/prov_bundle.min.js
+
+  # Copy index.html for device demo homepage, but change "demo.js" to "demo.min.js"
+  sed s/demo\.js/demo\.min\.js/g ../src/index.html > ../dist/index.html
+
+  # Minify demo homepage JavaScript while copying to build directory
+  uglifyjs ../src/demo.js > ../dist/demo.min.js
 
   # Zip files in place in build directory
   gzip ../dist/prov/index.html
   gzip ../dist/prov/prov_bundle.min.js
   gzip ../dist/prov/spectre.min.css
   gzip ../dist/index.html
+  gzip ../dist/demo.min.js
 else
   # Copy the JavaScript and HTML files as they are to the build output
   cp ../src/prov/index.html ../dist/prov/index.html
   cp prov_bundle_tmp.js ../dist/prov/prov_bundle.js
+  cp ../src/index.html ../dist/index.html
+  cp ../src/demo.js ../dist/demo.js
 fi
 
 cd ..
