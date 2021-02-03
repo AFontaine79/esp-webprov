@@ -145,7 +145,7 @@ function requestSec0Session() {
     var buffer = pbf.finish();
 
     // Issue sec0 protocomm request to the server
-    sendProtocommRequest(buffer, "POST", sessionUri, handleSec0Response, true, 2000);
+    sendProtocommRequest(buffer, "POST", sessionUri, handleSec0Response, true, 4000);
 }
 
 function handleSec0Response() {
