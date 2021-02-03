@@ -160,6 +160,13 @@ function handleSec0Response() {
                 console.log("Non-secure session granted.");
                 provState = provStates.READY;
                 startScan();
+
+                // In the case of multiple auto-rise of provisioning page,
+                // we want the separate webpages to work together to issue
+                // only a single scan request. The first one to get a scan
+                // status response will end up requesting the scan and the
+                // other windows will wait for the results.
+                getScanStatus();
             }
         } catch(e1) {
             alert(e1);
@@ -214,12 +221,6 @@ function handleScanStartResponse()
         
             if (message.msg == 1 && message.status == 0) {
                 console.log("Scan completed successfully. Requesting scan results.");
-
-                // Since we did a blocking scan, getting the response means the ESP32 is done.
-                // We can clear the scan in progress indicator in advance of populating the
-                // SSID table.
-                updateUIForScanning(false);
-
                 getScanStatus();
             }
         } catch(e1) {
@@ -255,11 +256,7 @@ function handleGetScanStatusResponse()
             console.log(message);
         
             if (message.msg == 3 && message.status == 0) {
-                numScanResults = message.resp_scan_status.result_count;
-                numScanResultsForDisplay = numScanResults;
-                console.log("Found %d networks.", numScanResults);
-                scanIndex = 0;
-                getScanResults();
+                handleScanStatus(message.resp_scan_status);
             }
         } catch(e1) {
             alert(e1);
@@ -267,6 +264,32 @@ function handleGetScanStatusResponse()
         }
     } else {
         // TODO: Indicate failure
+    }
+}
+
+function handleScanStatus(scanStatus) {
+    if (scanStatus.scan_finished) {
+        if (scanStatus.result_count > 0) {
+            // A scan has already been performed and we need
+            // lonly collect the results.
+            numScanResults = scanStatus.result_count;
+            numScanResultsForDisplay = numScanResults;
+            console.log("Found %d networks.", numScanResults);
+            scanIndex = 0;
+            updateUIForScanning(false);
+            getScanResults();
+        } else {
+            // No scan has been initiated yet. We must issue
+            // scan request to collect initial results.
+            console.log("No scan requested yet. Requesting initial scan...");
+            startScan();
+        }
+    } else {
+        // A scan has already been requested, either by this
+        // browser window or another one. We will wait for it
+        // to finish and collect its results.
+        console.log("Scan in progress. Checking again in 1 second...");
+        setTimeout(getScanStatus, 1000);
     }
 }
 
