@@ -159,7 +159,6 @@ function handleSec0Response() {
             if (message.sec_ver == 0 && message.sec0.sr.status==0) {
                 console.log("Non-secure session granted.");
                 provState = provStates.READY;
-                startScan();
 
                 // In the case of multiple auto-rise of provisioning page,
                 // we want the separate webpages to work together to issue
