@@ -165,4 +165,6 @@ void captive_portal_stop(void)
     httpd_uri_t common_get_uri = {
         .uri = "/*", .method = HTTP_GET, .handler = _app_get_handler, .user_ctx = _app_get_ctx};
     httpd_register_uri_handler(*_httpd_handle, &common_get_uri);
+
+    _is_started = false;
 }
