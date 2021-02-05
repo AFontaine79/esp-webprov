@@ -75,6 +75,12 @@ static esp_timer_handle_t _wifi_prov_reset_timer = NULL;
 static esp_timer_handle_t _wifi_prov_shutdown_stage1_timer = NULL;
 static esp_timer_handle_t _wifi_prov_shutdown_stage2_timer = NULL;
 
+/* It turns out we need to keep track of the HTTP server handle here as well since we
+ * manually need to unregister the protocomm endpoint handler URIs after stopping the
+ * wifi_prov_mgr service. This seems like an oversight in the wifi_provisioning component.
+ */
+static httpd_handle_t* _httpd_handle;
+
 /* Event handler for catching system events */
 static void wifi_prov_event_handler(void* arg, esp_event_base_t event_base, int event_id,
                                     void* event_data)
@@ -317,6 +323,7 @@ esp_err_t prov_webpage_mgr_start(const prov_webpage_mgr_config_t* p_config)
     WEBPROV_CHECK(create_timers() == ESP_OK, "", err2);
 
     strlcpy(_homepage_uri, p_config->homepage_uri, sizeof(_homepage_uri));
+    _httpd_handle = p_config->httpd_handle;
 
     return ESP_OK;
 
@@ -330,15 +337,38 @@ void prov_webpage_mgr_stop(void)
 {
     ESP_LOGI(TAG, "Stopping prov webpage manager");
 
-    // Deactivate the captive portal
-    // (Does nothing if not started)
+    /*Deactivate the captive portal
+     * (Does nothing if not started)
+     */
     captive_portal_stop();
 
-    // Stop the provisioning service.
-    // This also turns off the softAP interface.
+    /* Unregister our own endpoint as part of cleanup. This is necessary
+     * since otherwise the URI handler sticks around in our HTTP server.
+     */
+    wifi_prov_mgr_endpoint_unregister(CUSTOM_PROV_ENDPOINT);
+
+    /* Stop the provisioning service.
+     * This also turns off the softAP interface.
+     */
     wifi_prov_mgr_stop_provisioning();
 
-    // Free and delete the timer instances.
+    /* When providing an external HTTP server to wifi_prov_mgr, it will not
+     * automatically unregister its own URI handlers from our server when
+     * the service is stopped.
+     * If we then try to start the service again with the same HTTP server,
+     * ESP-IDF will assert/abort when it tries to register for an already
+     * existing handler.
+     * Therefore, we need to manually unregister wifi_prov_mgr's handlers
+     * after stopping the service.
+     * This is an ENCAPSULATION BREAKING workaround for an oversight in
+     * ESP-IDF.
+     */
+    httpd_unregister_uri_handler(*_httpd_handle, "/proto-ver", HTTP_POST);
+    httpd_unregister_uri_handler(*_httpd_handle, "/prov-session", HTTP_POST);
+    httpd_unregister_uri_handler(*_httpd_handle, "/prov-config", HTTP_POST);
+    httpd_unregister_uri_handler(*_httpd_handle, "/prov-scan", HTTP_POST);
+
+    /* Free and delete the timer instances. */
     if (_wifi_prov_reset_timer) {
         esp_timer_stop(_wifi_prov_reset_timer);
         esp_timer_delete(_wifi_prov_reset_timer);
