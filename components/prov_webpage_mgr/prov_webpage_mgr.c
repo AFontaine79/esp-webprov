@@ -116,7 +116,8 @@ static void wifi_prov_event_handler(void* arg, esp_event_base_t event_base, int 
             wifi_prov_mgr_deinit();
 
             /* Now that the service is deinitialized, unregister this event handler */
-            esp_event_handler_unregister(WIFI_PROV_EVENT, ESP_EVENT_ANY_ID, &wifi_prov_event_handler);
+            esp_event_handler_unregister(WIFI_PROV_EVENT, ESP_EVENT_ANY_ID,
+                                         &wifi_prov_event_handler);
             break;
         default:
             break;

@@ -70,9 +70,11 @@ function handleGetButtonStateResponse() {
 };
 
 function clearWifiSettings() {
-    cmd = { command: "clear wifi settings" };
-    buffer = JSON.stringify(cmd);
-    sendWebAPIRequest(buffer, handleClearWifiSettingsResponse, handleClearWifiSettingsTimeout, 8000);
+    if (confirm("Are you sure you wish to clear Wi-Fi settings and reset the device?")) {
+        cmd = { command: "clear wifi settings" };
+        buffer = JSON.stringify(cmd);
+        sendWebAPIRequest(buffer, handleClearWifiSettingsResponse, handleClearWifiSettingsTimeout, 8000);
+    }
 }
 
 function handleClearWifiSettingsResponse() {
