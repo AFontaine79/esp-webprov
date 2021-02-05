@@ -10,11 +10,11 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <driver/gpio.h>
+#include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/event_groups.h>
 #include <freertos/task.h>
-#include <esp_timer.h>
-#include <driver/gpio.h>
 
 #include <cJSON.h>
 
@@ -41,7 +41,39 @@
 
 #define MDNS_INSTANCE "provisioning webpage server"
 
-#define BUTTON_GPIO		GPIO_NUM_0
+#define NETWORK_CONNECT_TIMEOUT_S 30
+#define BUTTON_GPIO               GPIO_NUM_0
+
+typedef enum
+{
+    /**
+     * Starting state before any assignment.
+     */
+    EXAMPLE_MAIN_INIT,
+
+    /**
+     * On startup, if the device is not yet provisioned, it will
+     * automatically enter the provisioning state.
+     * Also, if timeout occurs while attempting to connect to the
+     * provisioned network, the device will fall back to this state.
+     */
+    EXAMPLE_MAIN_PROVISIONING,
+
+    /**
+     * On startup, if the device is provisioned, it will automatically
+     * enter this state and remain here until the network connection
+     * either succeeds or times out.
+     * If an already established connection is lost, the device will
+     * transition to this state and reset the connection timeout timer.
+     */
+    EXAMPLE_MAIN_CONNECTING,
+
+    /**
+     * Device is connected to the provisioned network. Device homepage
+     * is accessible.
+     */
+    EXAMPLE_MAIN_CONNECTED,
+} example_main_state_t;
 
 static const char* TAG = "app";
 
@@ -54,19 +86,84 @@ static EventGroupHandle_t _wifi_event_group;
 
 static esp_timer_handle_t _wifi_reset_timer = NULL;
 
+static example_main_state_t _state = EXAMPLE_MAIN_INIT;
+static int64_t _network_connect_begin_timestamp = 0;
+
+/**
+ * Function prototypes for functions that are referenced before
+ * their definitions.
+ */
+static void handle_connecting_state(void);
+static void start_webprov(void);
+
+/**
+ * Change state atomically, taking care of any necessary changes
+ * in other variables at the same time.
+ */
+static void change_state(example_main_state_t new_state)
+{
+    if (_state == new_state) {
+        return;
+    }
+
+    if (EXAMPLE_MAIN_CONNECTING == new_state) {
+        _network_connect_begin_timestamp = esp_timer_get_time();
+    } else {
+        _network_connect_begin_timestamp = 0;
+    }
+
+    _state = new_state;
+}
+
 /* Event handler for catching system events */
 static void event_handler(void* arg, esp_event_base_t event_base, int event_id, void* event_data)
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
-        esp_wifi_connect();
+        change_state(EXAMPLE_MAIN_CONNECTING);
+        handle_connecting_state();
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*)event_data;
         ESP_LOGI(TAG, "Connected with IP Address:" IPSTR, IP2STR(&event->ip_info.ip));
+        change_state(EXAMPLE_MAIN_CONNECTED);
         /* Signal main application to continue execution */
         xEventGroupSetBits(_wifi_event_group, WIFI_CONNECTED_EVENT);
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         ESP_LOGI(TAG, "Disconnected. Connecting to the AP again...");
+        change_state(EXAMPLE_MAIN_CONNECTING);
+        handle_connecting_state();
+    }
+}
+
+/* Determines whether to keep attempting the connection or fall back to prov */
+static void handle_connecting_state(void)
+{
+    int64_t time_elapsed_s =
+        (esp_timer_get_time() - _network_connect_begin_timestamp) / (1000U * 1000U);
+    if (time_elapsed_s >= NETWORK_CONNECT_TIMEOUT_S) {
+        /* Fall back to provisioning mode */
+        ESP_LOGW(TAG, "Network connection timeout. Falling back to webprov mode.");
+
+        /* We don't handle WiFi events while in provisioning mode. */
+        /* These are not turned back on until the WIFI_PROV_CRED_SUCCESS event. */
+        ESP_ERROR_CHECK(esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler));
+
+        start_webprov();
+    } else {
+        /* Perform next attempt */
         esp_wifi_connect();
+    }
+}
+
+static void wifi_prov_event_handler(void* arg, wifi_prov_cb_event_t event, void* event_data)
+{
+    if (event == WIFI_PROV_CRED_SUCCESS) {
+        /* Upon successful provisioning, the device will enter normal station
+         * mode operation. Provisioning startup registers only the STA_GOT_IP
+         * event, but now we should register for all WiFi events so that we
+         * can handle device disconnection.
+         */
+        ESP_ERROR_CHECK(
+            esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL));
     }
 }
 
@@ -78,7 +175,7 @@ static esp_err_t rest_web_api_handler(httpd_req_t* req)
     size_t recv_size = MIN(req->content_len, sizeof(content));
 
     int ret = httpd_req_recv(req, content, recv_size);
-    if (ret <= 0) {  /* 0 return value indicates connection closed */
+    if (ret <= 0) { /* 0 return value indicates connection closed */
         /* Check if timeout occurred */
         if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
             /* In case of timeout one can choose to retry calling
@@ -117,38 +214,38 @@ static esp_err_t rest_web_api_handler(httpd_req_t* req)
     }
 
     if (strcmp(cmd_str, "get system uptime") == 0) {
-    	int32_t sys_uptime_s = (int32_t)(esp_timer_get_time() / (1000U * 1000U));
-    	char sys_uptime_str[16];
+        int32_t sys_uptime_s = (int32_t)(esp_timer_get_time() / (1000U * 1000U));
+        char sys_uptime_str[16];
         sprintf(sys_uptime_str, "%d s", sys_uptime_s);
         cJSON* sys_uptime_json_str_obj = cJSON_CreateString(sys_uptime_str);
         cJSON_AddItemToObject(resp_root, "uptime", sys_uptime_json_str_obj);
         status_str = "ok";
     } else if (strcmp(cmd_str, "get button state") == 0) {
-    	int button_level = gpio_get_level(BUTTON_GPIO);
-    	char *button_state_str;
-    	if (button_level) {
-    		button_state_str = "up";
-    	} else {
-    		button_state_str = "down";
-    	}
+        int button_level = gpio_get_level(BUTTON_GPIO);
+        char* button_state_str;
+        if (button_level) {
+            button_state_str = "up";
+        } else {
+            button_state_str = "down";
+        }
         cJSON* button_state_json_str_obj = cJSON_CreateString(button_state_str);
         cJSON_AddItemToObject(resp_root, "button", button_state_json_str_obj);
         status_str = "ok";
     } else if (strcmp(cmd_str, "clear wifi settings") == 0) {
-    	/* Halt Wi-Fi, clear settings, and reset device three seconds from now. */
+        /* Halt Wi-Fi, clear settings, and reset device three seconds from now. */
         if (esp_timer_start_once(_wifi_reset_timer, 3000 * 1000U) == ESP_OK) {
             status_str = "ok";
         } else {
             status_str = "command failed";
         }
     } else if (strcmp(cmd_str, "reset") == 0) {
-		status_str = "command failed";
+        status_str = "command failed";
     } else {
         status_str = "bad command";
     }
 
 custom_prov_exit:;
-    char *resp_str;
+    char* resp_str;
     size_t resp_len;
 
     cJSON* resp_item = cJSON_CreateString(status_str);
@@ -166,7 +263,7 @@ custom_prov_exit:;
      * locally at localhost:5000 and still expect cross-domain web-api
      * requests to the device to work.
      */
-//    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    //    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
 
     httpd_resp_send(req, resp_str, resp_len);
 
@@ -177,8 +274,8 @@ custom_prov_exit:;
 
 static void clear_wifi_settings_and_restart(void* arg)
 {
-	/* Stop Wi-Fi operations before clearing settings */
-	esp_wifi_stop();
+    /* Stop Wi-Fi operations before clearing settings */
+    esp_wifi_stop();
 
     wifi_config_t wifi_cfg_empty;
     memset(&wifi_cfg_empty, 0, sizeof(wifi_config_t));
@@ -321,7 +418,7 @@ esp_err_t init_fs(void)
 }
 #endif
 
-void button_init(void)
+static void button_init(void)
 {
     gpio_config_t gpioConfig = {
         .pin_bit_mask = (1ULL << BUTTON_GPIO),
@@ -331,6 +428,44 @@ void button_init(void)
         .intr_type = GPIO_INTR_DISABLE,
     };
     gpio_config(&gpioConfig);
+}
+
+static void start_webprov(void)
+{
+    ESP_LOGI(TAG, "Starting provisioning webpage manager");
+
+    /* Get strings needed for prov_webpage_mgr configuration */
+    char service_name[12];
+    get_device_service_name(service_name, sizeof(service_name));
+    char homepage_uri[32];
+    get_homepage_uri(homepage_uri, sizeof(homepage_uri));
+
+    /* Configure and start prov_webpage_mgr. */
+    prov_webpage_mgr_config_t webprov_config = {
+        .httpd_handle = rest_server_get_httpd_handle(),
+        .homepage_uri = homepage_uri,
+        .app_wifi_prov_event_handler =
+            {
+                .event_cb = wifi_prov_event_handler,
+                .user_data = NULL,
+            },
+        .wifi_prov_mgr_start_settings =
+            {
+                .security = WIFI_PROV_SECURITY_0,
+                .pop = NULL,
+                .service_name = service_name,
+                .service_key = CONFIG_EXAMPLE_WIFI_PASSWORD,
+            },
+        .enable_captive_portal = true,
+        .captive_portal_setup =
+            {
+                .netif_handle = _softap_if_handle,
+                .app_get_handler = rest_server_get_common_get_handler(),
+                .app_get_ctx = rest_server_get_common_get_ctx(),
+            },
+    };
+    ESP_ERROR_CHECK(prov_webpage_mgr_start(&webprov_config));
+    change_state(EXAMPLE_MAIN_PROVISIONING);
 }
 
 void app_main(void)
@@ -355,11 +490,10 @@ void app_main(void)
     /* This timer exists to provide a slight delay after accepting
      * the Clear Wi-Fi Settings command.
      */
-    esp_timer_create_args_t wifi_reset_timer_confg = {
-        .callback = clear_wifi_settings_and_restart,
-        .arg = NULL,
-        .dispatch_method = ESP_TIMER_TASK,
-        .name = "wifi_reset_tm"};
+    esp_timer_create_args_t wifi_reset_timer_confg = {.callback = clear_wifi_settings_and_restart,
+                                                      .arg = NULL,
+                                                      .dispatch_method = ESP_TIMER_TASK,
+                                                      .name = "wifi_reset_tm"};
     ESP_ERROR_CHECK(esp_timer_create(&wifi_reset_timer_confg, &_wifi_reset_timer));
 
     /* Initialize the default event loop */
@@ -402,10 +536,8 @@ void app_main(void)
     ESP_ERROR_CHECK(rest_server_start(CONFIG_EXAMPLE_WEB_MOUNT_POINT));
 
     /* URI for handling commands from web pages */
-    httpd_uri_t web_api_uri = {.uri = "/web-api",
-                               .method = HTTP_POST,
-                               .handler = rest_web_api_handler,
-                               .user_ctx = NULL};
+    httpd_uri_t web_api_uri = {
+        .uri = "/web-api", .method = HTTP_POST, .handler = rest_web_api_handler, .user_ctx = NULL};
     httpd_register_uri_handler(*(rest_server_get_httpd_handle()), &web_api_uri);
 
     /* Let's find out if the device is provisioned */
@@ -414,43 +546,11 @@ void app_main(void)
 
     /* If device is not yet provisioned start provisioning service */
     if (!provisioned) {
-        ESP_LOGI(TAG, "Starting provisioning webpage manager");
-
         /* Register custom event handlers. */
         ESP_ERROR_CHECK(
             esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL));
 
-        /* Get strings needed for prov_webpage_mgr configuration */
-        char service_name[12];
-        get_device_service_name(service_name, sizeof(service_name));
-        char homepage_uri[32];
-        get_homepage_uri(homepage_uri, sizeof(homepage_uri));
-
-        /* Configure and start prov_webpage_mgr. */
-        prov_webpage_mgr_config_t webprov_config = {
-            .httpd_handle = rest_server_get_httpd_handle(),
-            .homepage_uri = homepage_uri,
-            .app_wifi_prov_event_handler =
-                {
-                    .event_cb = NULL,
-                    .user_data = NULL,
-                },
-            .wifi_prov_mgr_start_settings =
-                {
-                    .security = WIFI_PROV_SECURITY_0,
-                    .pop = NULL,
-                    .service_name = service_name,
-                    .service_key = CONFIG_EXAMPLE_WIFI_PASSWORD,
-                },
-            .enable_captive_portal = true,
-            .captive_portal_setup =
-                {
-                    .netif_handle = _softap_if_handle,
-                    .app_get_handler = rest_server_get_common_get_handler(),
-                    .app_get_ctx = rest_server_get_common_get_ctx(),
-                },
-        };
-        ESP_ERROR_CHECK(prov_webpage_mgr_start(&webprov_config));
+        start_webprov();
     } else {
         ESP_LOGI(TAG, "Already provisioned, starting Wi-Fi STA");
 
@@ -462,6 +562,7 @@ void app_main(void)
 
         /* Start Wi-Fi station */
         wifi_init_sta();
+        change_state(EXAMPLE_MAIN_CONNECTING);
     }
 
     /* Wait for Wi-Fi connection */
