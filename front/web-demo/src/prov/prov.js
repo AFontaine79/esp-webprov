@@ -531,7 +531,7 @@ function handleShutdownProvRepsonse() {
         var resp = JSON.parse(this.responseText);
         if (resp.status === customStatusStrings[customStatus.SUCCESS]) {
             console.log("Provisioning manager shut down");
-            getHomepageUrl();
+            setTimeout(getHomepageUrl, 1000);
         } else {
             console.log("Shutdown prov command failed with status: " + resp.status);
         }
