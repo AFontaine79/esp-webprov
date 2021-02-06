@@ -516,18 +516,18 @@ function handleProtocommResponse() {
         try {
             protocommResponseCallback(this);
         } catch(e1) {
-            alert(e1);
-            // TODO: Indicate failure
+            alert("Unexpected exception handling protocomm response " + e1);
+            updateUIForScanning(false);
         }
     } else {
-        // TODO: Indicate failure
+        alert("Unexpected http status " + this.status + " on protocomm request.");
+        updateUIForScanning(false);
     }
 }
 
 function handleRequestTimeout() {
-    alert("Unexpected error: Failed to communicate with provisioining endpoint.");
-    provState = provStates.UNINITIALIZED;
-    updateUIForScanning(false);
+    console.log("Timeout communicating with provisioining endpoint.");
+    updateUIServiceUnavailable();
 }
 
 function verifyConfig() {
@@ -582,10 +582,10 @@ function addEntryToSsidTable(scanResult) {
 }
 
 function updateUIForMode(isScanning) {
-    
     var scanningDiv = document.getElementById("scanning-div");
     var configDiv = document.getElementById("connecting-div");
     var redirectDiv = document.getElementById("redirect-div");
+    var unavailableDiv = document.getElementById("unavailable-div");
     if (isScanning) {
         scanningDiv.style.display = "block";
         configDiv.style.display = "none";
@@ -594,6 +594,7 @@ function updateUIForMode(isScanning) {
         configDiv.style.display = "block";
     }
     redirectDiv.hidden = true;
+    unavailableDiv.hidden = true;
 }
 
 function updateUIForScanning(isScanning) {
@@ -641,6 +642,19 @@ function updateUIForConnecting(isInProgress, isSuccess, msgText) {
             goBackBtn.style.display = "block";
         }
     }
+}
+
+function updateUIServiceUnavailable() {
+    var scanningDiv = document.getElementById("scanning-div");
+    var configDiv = document.getElementById("connecting-div");
+    var redirectDiv = document.getElementById("redirect-div");
+    var unavailableDiv = document.getElementById("unavailable-div");
+    scanningDiv.style.display = "none";
+    configDiv.style.display = "none";
+    redirectDiv.hidden = true;
+    unavailableDiv.hidden = false;
+
+    provState = provStates.UNINITIALIZED;
 }
 
 function showSelectedResults() {
