@@ -106,6 +106,9 @@ const customStatusStrings = [
     "bad command",
 ];
 
+// Function pointer to handler for the current protocomm request, assuming it is successful.
+var protocommResponseCallback;
+
 
 window.onload = function() {
     document.getElementById("page-prev").addEventListener("click", showPrevResultsPage);
@@ -148,33 +151,22 @@ function requestSec0Session() {
     sendProtocommRequest(buffer, "POST", sessionUri, handleSec0Response, true, 5000);
 }
 
-function handleSec0Response() {
-    if (this.status == 200) {
-        try {
-            var pbf = new Pbf(new Uint8Array(this.response));
-            var message = SessionData.read(pbf);
-        
-            console.log(message);
-        
-            if (message.sec_ver == 0 && message.sec0.sr.status==0) {
-                console.log("Non-secure session granted.");
-                provState = provStates.READY;
+function handleSec0Response(xhr) {
+    var pbf = new Pbf(new Uint8Array(xhr.response));
+    var message = SessionData.read(pbf);
 
-                // In the case of multiple auto-rise of provisioning page,
-                // we want the separate webpages to work together to issue
-                // only a single scan request. The first one to get a scan
-                // status response will end up requesting the scan and the
-                // other windows will wait for the results.
-                getScanStatus();
-            }
-        } catch(e1) {
-            alert(e1);
-            // TODO: Indicate failure
-        }
-    } else {
-        // TODO: Common error handler
-        alert("Unexpected error: Failed to initialize provisioning.");
-        updateUIForScanning(false);
+    console.log(message);
+
+    if (message.sec_ver == 0 && message.sec0.sr.status==0) {
+        console.log("Non-secure session granted.");
+        provState = provStates.READY;
+
+        // In the case of multiple auto-rise of provisioning page,
+        // we want the separate webpages to work together to issue
+        // only a single scan request. The first one to get a scan
+        // status response will end up requesting the scan and the
+        // other windows will wait for the results.
+        getScanStatus();
     }
 }
 
@@ -209,25 +201,16 @@ function startScan() {
     sendProtocommRequest(buffer, "POST", scanUri, handleScanStartResponse);
 }
 
-function handleScanStartResponse()
+function handleScanStartResponse(xhr)
 {
-    if (this.status == 200) {
-        try {
-            var pbf = new Pbf(new Uint8Array(this.response));
-            var message = WiFiScanPayload.read(pbf);
-        
-            console.log(message);
-        
-            if (message.msg == 1 && message.status == 0) {
-                console.log("Scan completed successfully. Requesting scan results.");
-                getScanStatus();
-            }
-        } catch(e1) {
-            alert(e1);
-            // TODO: Indicate failure
-        }
-    } else {
-        // TODO: Indicate failure
+    var pbf = new Pbf(new Uint8Array(xhr.response));
+    var message = WiFiScanPayload.read(pbf);
+
+    console.log(message);
+
+    if (message.msg == 1 && message.status == 0) {
+        console.log("Scan completed successfully. Requesting scan results.");
+        getScanStatus();
     }
 }
 
@@ -245,24 +228,15 @@ function getScanStatus() {
     sendProtocommRequest(buffer, "POST", scanUri, handleGetScanStatusResponse);
 }
 
-function handleGetScanStatusResponse()
+function handleGetScanStatusResponse(xhr)
 {
-    if (this.status == 200) {
-        try {
-            var pbf = new Pbf(new Uint8Array(this.response));
-            var message = WiFiScanPayload.read(pbf);
-        
-            console.log(message);
-        
-            if (message.msg == 3 && message.status == 0) {
-                handleScanStatus(message.resp_scan_status);
-            }
-        } catch(e1) {
-            alert(e1);
-            // TODO: Indicate failure
-        }
-    } else {
-        // TODO: Indicate failure
+    var pbf = new Pbf(new Uint8Array(xhr.response));
+    var message = WiFiScanPayload.read(pbf);
+
+    console.log(message);
+
+    if (message.msg == 3 && message.status == 0) {
+        handleScanStatus(message.resp_scan_status);
     }
 }
 
@@ -322,41 +296,32 @@ function getScanResults() {
     }
 }
 
-function handleScanResultsResponse()
+function handleScanResultsResponse(xhr)
 {
-    if (this.status == 200) {
-        try {
-            var pbf = new Pbf(new Uint8Array(this.response));
-            var message = WiFiScanPayload.read(pbf);
-        
-            console.log(message);
-        
-            if (message.msg == 5 && message.status == 0) {
-                console.log("Retrieved " + message.resp_scan_result.entries.length + " results.");
+    var pbf = new Pbf(new Uint8Array(xhr.response));
+    var message = WiFiScanPayload.read(pbf);
 
-                // Add these entries to the SSID table
-                for (let i = 0; i < message.resp_scan_result.entries.length; i++) {
-                    var scanResult = message.resp_scan_result.entries[i];
+    console.log(message);
 
-                    // Completely throw any results not meeting the threshold
-                    //   and decrement the results count when we do so.
-                    if (scanResult.rssi > RSSI_THRESHOLD) {
-                        scanResults.push(scanResult);
-                    } else {
-                        console.log("Discarded entry with RSSI %d", scanResult.rssi);
-                        numScanResultsForDisplay--;
-                    }
-                }
+    if (message.msg == 5 && message.status == 0) {
+        console.log("Retrieved " + message.resp_scan_result.entries.length + " results.");
 
-                // Request the next batch of results
-                getScanResults();
+        // Add these entries to the SSID table
+        for (let i = 0; i < message.resp_scan_result.entries.length; i++) {
+            var scanResult = message.resp_scan_result.entries[i];
+
+            // Completely throw any results not meeting the threshold
+            //   and decrement the results count when we do so.
+            if (scanResult.rssi > RSSI_THRESHOLD) {
+                scanResults.push(scanResult);
+            } else {
+                console.log("Discarded entry with RSSI %d", scanResult.rssi);
+                numScanResultsForDisplay--;
             }
-        } catch(e1) {
-            alert(e1);
-            // TODO: Indicate failure
         }
-    } else {
-        // TODO: Indicate failure
+
+        // Request the next batch of results
+        getScanResults();
     }
 }
 
@@ -393,25 +358,15 @@ function setConfig() {
     sendProtocommRequest(buffer, "POST", configUri, handleSetConfigResponse);
 }
 
-function handleSetConfigResponse() {
-    if (this.status == 200) {
-        try {
-            var pbf = new Pbf(new Uint8Array(this.response));
-            var message = WiFiConfigPayload.read(pbf);
-        
-            console.log(message);
-        
-            if (message.msg == 3 && message.resp_set_config.status == 0) {
-                console.log("Configuration sent successfully.");
-                applyConfig();
-            }
-        } catch(e1) {
-            alert(e1);
-            // TODO: Indicate failure
-        }
-    } else {
-        // TODO: Indicate failure
-        console.log("Failed to send configuration");
+function handleSetConfigResponse(xhr) {
+    var pbf = new Pbf(new Uint8Array(xhr.response));
+    var message = WiFiConfigPayload.read(pbf);
+
+    console.log(message);
+
+    if (message.msg == 3 && message.resp_set_config.status == 0) {
+        console.log("Configuration sent successfully.");
+        applyConfig();
     }
 }
 
@@ -429,25 +384,15 @@ function applyConfig() {
     sendProtocommRequest(buffer, "POST", configUri, handleApplyConfigResponse);
 }
 
-function handleApplyConfigResponse() {
-    if (this.status == 200) {
-        try {
-            var pbf = new Pbf(new Uint8Array(this.response));
-            var message = WiFiConfigPayload.read(pbf);
-        
-            console.log(message);
-        
-            if (message.msg == 5 && message.resp_apply_config.status == 0) {
-                console.log("Configuration applied successfully.");
-                setTimeout(getConfigStatus, 5000);
-            }
-        } catch(e1) {
-            alert(e1);
-            // TODO: Indicate failure
-        }
-    } else {
-        // TODO: Indicate failure
-        console.log("Failed to apply configuration");
+function handleApplyConfigResponse(xhr) {
+    var pbf = new Pbf(new Uint8Array(xhr.response));
+    var message = WiFiConfigPayload.read(pbf);
+
+    console.log(message);
+
+    if (message.msg == 5 && message.resp_apply_config.status == 0) {
+        console.log("Configuration applied successfully.");
+        setTimeout(getConfigStatus, 5000);
     }
 }
 
@@ -465,40 +410,30 @@ function getConfigStatus() {
     sendProtocommRequest(buffer, "POST", configUri, handleGetConfigStatusResponse);
 }
 
-function handleGetConfigStatusResponse() {
-    if (this.status == 200) {
-        try {
-            var pbf = new Pbf(new Uint8Array(this.response));
-            var message = WiFiConfigPayload.read(pbf);
-        
-            console.log(message);
-        
-            if (message.msg == 1) {
-                if (message.resp_get_status.status == 0) {
-                    if (message.resp_get_status.sta_state == 0) {
-                        updateUIForConnecting(false, true, "Success");
-                        sendCustomCommand(customCommands.SHUTDOWN_PROV, handleShutdownProvRepsonse);
-                    } else if (message.resp_get_status.sta_state == 1) {
-                        // Still in connecting state.  Check again in 1 second.
-                        setTimeout(getConfigStatus, 1000);
-                    } else {
-                        // Station state 2 = Disconnected, Unclear why or if we should ever get this.
-                        // Station state 3 = Connection Failed
-                        updateUIForConnecting(false, false, WiFiConnectFailReasonStrings[message.resp_get_status.fail_reason]);
-                        sendCustomCommand(customCommands.RESET_PROV, handleResetProvResponse);
-                    }
-                } else {
-                    console.log("Configuration attempt not complete. Status = %d", message.resp_get_status.status);
-                    setTimeout(getConfigStatus, 1000);
-                }
+function handleGetConfigStatusResponse(xhr) {
+    var pbf = new Pbf(new Uint8Array(xhr.response));
+    var message = WiFiConfigPayload.read(pbf);
+
+    console.log(message);
+
+    if (message.msg == 1) {
+        if (message.resp_get_status.status == 0) {
+            if (message.resp_get_status.sta_state == 0) {
+                updateUIForConnecting(false, true, "Success");
+                sendCustomCommand(customCommands.SHUTDOWN_PROV, handleShutdownProvRepsonse);
+            } else if (message.resp_get_status.sta_state == 1) {
+                // Still in connecting state.  Check again in 1 second.
+                setTimeout(getConfigStatus, 1000);
+            } else {
+                // Station state 2 = Disconnected, Unclear why or if we should ever get this.
+                // Station state 3 = Connection Failed
+                updateUIForConnecting(false, false, WiFiConnectFailReasonStrings[message.resp_get_status.fail_reason]);
+                sendCustomCommand(customCommands.RESET_PROV, handleResetProvResponse);
             }
-        } catch(e1) {
-            alert(e1);
-            // TODO: Indicate failure
+        } else {
+            console.log("Configuration attempt not complete. Status = %d", message.resp_get_status.status);
+            setTimeout(getConfigStatus, 1000);
         }
-    } else {
-        // TODO: Indicate failure
-        console.log("Failed to get config status.");
     }
 }
 
@@ -512,54 +447,39 @@ function sendCustomCommand(cmdNumber, responseHandler) {
     sendProtocommRequest(buffer, "POST", customUri, responseHandler, false);
 }
 
-function handleResetProvResponse() {
-    if (this.status == 200) {
-        var resp = JSON.parse(this.responseText);
-        if (resp.status === customStatusStrings[customStatus.SUCCESS]) {
-            console.log("Provisioning manager reset");
-        } else {
-            console.log("Reset prov command failed with status: " + resp.status);
-        }
+function handleResetProvResponse(xhr) {
+    var resp = JSON.parse(xhr.responseText);
+    if (resp.status === customStatusStrings[customStatus.SUCCESS]) {
+        console.log("Provisioning manager reset");
     } else {
-        // TODO: Indicate failure
-        console.log("Reset prov command failed.");
+        console.log("Reset prov command failed with status: " + resp.status);
     }
 }
 
-function handleShutdownProvRepsonse() {
-    if (this.status == 200) {
-        var resp = JSON.parse(this.responseText);
-        if (resp.status === customStatusStrings[customStatus.SUCCESS]) {
-            console.log("Provisioning manager shut down");
-            setTimeout(getHomepageUrl, 1000);
-        } else {
-            console.log("Shutdown prov command failed with status: " + resp.status);
-        }
+function handleShutdownProvRepsonse(xhr) {
+    var resp = JSON.parse(xhr.responseText);
+    if (resp.status === customStatusStrings[customStatus.SUCCESS]) {
+        console.log("Provisioning manager shut down");
+        setTimeout(getHomepageUrl, 1000);
     } else {
-        // TODO: Indicate failure
-        console.log("Shutdown prov command failed.");
+        console.log("Shutdown prov command failed with status: " + resp.status);
     }
 }
 
-function handleGetHomepageResponse() {
-    if (this.status == 200) {
-        var resp = JSON.parse(this.responseText);
-        if (resp.status === customStatusStrings[customStatus.SUCCESS]) {
-            console.log("Got homepage URL: " + resp.uri);
+function handleGetHomepageResponse(xhr) {
+    var resp = JSON.parse(xhr.responseText);
+    if (resp.status === customStatusStrings[customStatus.SUCCESS]) {
+        console.log("Got homepage URL: " + resp.uri);
 
-            // Show the user the URL for their device homepage.
-            showRedirectAddress(resp.uri);
-            
-            // This won't actually exit the CNA (Captive Network Assistant) or the
-            //   CPMB (Captive-Portal Mini Browser) on all devices.
-            // As such, this auto-redirect may not be the best flow.
-            window.location = resp.uri;
-        } else {
-            console.log("Failed to get homepage URL: " + resp.status);
-        }
+        // Show the user the URL for their device homepage.
+        showRedirectAddress(resp.uri);
+        
+        // This won't actually exit the CNA (Captive Network Assistant) or the
+        //   CPMB (Captive-Portal Mini Browser) on all devices.
+        // As such, this auto-redirect may not be the best flow.
+        window.location = resp.uri;
     } else {
-        // TODO: Indicate failure
-        console.log("Failed to get homepage URL.");
+        console.log("Failed to get homepage URL: " + resp.status);
     }
 }
 
@@ -572,6 +492,7 @@ function sendProtocommRequest(buffer, method, uri, onLoadCallback, isBinary=true
         // However, with callbacks as they are done here, the XMLHttpRequest object
         // is still accessible as the "this" variable. I mention this because, as 
         // someone who is not seasoned in JavaScript, it was not intuitive to me.
+        protocommResponseCallback = onLoadCallback;
         var xhr = new XMLHttpRequest();
         xhr.open(method, uri);
         xhr.setRequestHeader('Accept', 'text/plain');
@@ -582,15 +503,28 @@ function sendProtocommRequest(buffer, method, uri, onLoadCallback, isBinary=true
             xhr.setRequestHeader('Content-Type', 'text/plain');
         }
         xhr.timeout = timeout;
-        xhr.ontimeout = onProvRequestTimeout;
-        xhr.onload = onLoadCallback;
+        xhr.ontimeout = handleRequestTimeout;
+        xhr.onload = handleProtocommResponse;
         xhr.send(buffer);
     } catch (e1) {
         alert(e1);
     }
 }
 
-function onProvRequestTimeout() {
+function handleProtocommResponse() {
+    if (this.status == 200) {
+        try {
+            protocommResponseCallback(this);
+        } catch(e1) {
+            alert(e1);
+            // TODO: Indicate failure
+        }
+    } else {
+        // TODO: Indicate failure
+    }
+}
+
+function handleRequestTimeout() {
     alert("Unexpected error: Failed to communicate with provisioining endpoint.");
     provState = provStates.UNINITIALIZED;
     updateUIForScanning(false);
