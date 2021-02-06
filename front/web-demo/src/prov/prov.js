@@ -519,6 +519,10 @@ function handleProtocommResponse() {
             alert("Unexpected exception handling protocomm response " + e1);
             updateUIForScanning(false);
         }
+    } else if (this.status == 405) {
+        console.log("405 Method not Allowed communicating with provisioning endpoint.");
+        console.log("wifi_prov_mgr very likely not active.");
+        updateUIServiceUnavailable();
     } else {
         alert("Unexpected http status " + this.status + " on protocomm request.");
         updateUIForScanning(false);
